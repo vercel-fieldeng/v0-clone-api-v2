@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { guestRegex, isDevelopmentEnvironment } from './lib/constants'
+import { getChatCapabilityCookieName } from './lib/chat-capability-cookie'
 
 // Next.js 16 renamed the `middleware` file convention to `proxy`. The exported
 // function is named `proxy`; the matcher `config` export is unchanged.
@@ -8,7 +9,7 @@ export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl
 
   // --- v0 preview asset routing ---
-  // The v2 preview is a Next app served through our same-origin proxy at
+  // The v2 preview is a Next app served through our preview proxy at
   // /api/preview/<chatId>. It emits ROOT-relative asset URLs (/_next/..., fonts,
   // /placeholder.svg, dynamic chunks) that would otherwise resolve to our origin
   // root and bypass the proxy (404). Any request whose Referer points at the
@@ -16,11 +17,14 @@ export async function proxy(request: NextRequest) {
   // with the auth token attached. This runs before auth and static handling.
   if (!pathname.startsWith('/api/preview')) {
     const referer = request.headers.get('referer')
-    const match = referer?.match(/\/api\/preview\/([^/?#]+)/)
-    if (match) {
+    const refererUrl = referer ? URL.parse(referer) : null
+    const match = refererUrl?.pathname.match(/\/api\/preview\/([^/?#]+)/)
+    if (match && refererUrl?.origin === request.nextUrl.origin) {
       const rewriteUrl = request.nextUrl.clone()
       rewriteUrl.pathname = `/api/preview/${match[1]}${pathname}`
       rewriteUrl.search = search
+      const capability = refererUrl.searchParams.get('capability')
+      if (capability) rewriteUrl.searchParams.set('capability', capability)
       return NextResponse.rewrite(rewriteUrl)
     }
   }
@@ -69,6 +73,14 @@ export async function proxy(request: NextRequest) {
 
     // Allow homepage for anonymous users
     if (pathname === '/') {
+      return NextResponse.next()
+    }
+
+    const chatId = pathname.match(/^\/chats\/([^/]+)$/)?.[1]
+    if (
+      chatId &&
+      request.cookies.has(getChatCapabilityCookieName(decodeURIComponent(chatId)))
+    ) {
       return NextResponse.next()
     }
 

@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useStreaming } from '@/contexts/streaming-context'
 import useSWR, { mutate } from 'swr'
-import type { V0MessagePart } from '@/components/v0/message-parts'
-import type { MessageBinaryFormat } from '@v0-sdk/react'
+import type { Message as V0Message } from '@v0-sdk/react'
 import type { MessageContent } from '@/lib/chat-types'
 import { pollPreviewUrl } from '@/lib/client-utils'
 
@@ -11,7 +10,7 @@ interface ChatApiMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
-  parts?: V0MessagePart[]
+  parts?: V0Message['parts']
 }
 
 interface Chat {
@@ -165,7 +164,7 @@ export function useChat(chatId: string) {
     }
   }
 
-  const handleStreamingComplete = async (finalParts: MessageBinaryFormat) => {
+  const handleStreamingComplete = async (finalParts: V0Message['parts']) => {
     setIsStreaming(false)
     setIsLoading(false)
 
@@ -187,9 +186,7 @@ export function useChat(chatId: string) {
     // v2: the preview URL is fetched separately and may lag the stream, so poll
     // until it's ready, then push it into the SWR cache for the preview panel.
     try {
-      const previewUrl = await pollPreviewUrl(chatId)
-      // Point the iframe at the same-origin proxy once the preview is ready.
-      const demo = previewUrl ? `/api/preview/${chatId}` : null
+      const demo = await pollPreviewUrl(chatId)
       mutate(
         `/api/chats/${chatId}`,
         (existing: Chat | undefined) =>
@@ -202,7 +199,10 @@ export function useChat(chatId: string) {
     }
   }
 
-  const handleChatData = async (_chatData: { id: string }) => {
+  const handleChatData = async (
+    _chatData: { id: string },
+    _capability?: string,
+  ) => {
     // On an existing chat page the chat id is already known; nothing to do.
   }
 

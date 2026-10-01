@@ -69,7 +69,7 @@ export function UserNav({ session }: UserNavProps) {
           <DropdownMenuItem
             onClick={async () => {
               // Clear any local session data first
-              await signOut({ callbackUrl: '/', redirect: true })
+              await signOut({ redirectTo: '/', redirect: true })
             }}
             className="cursor-pointer"
           >

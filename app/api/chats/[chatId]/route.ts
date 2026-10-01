@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { v0, unwrap } from '@/lib/v0'
-import { auth } from '@/app/(auth)/auth'
-import { getChatOwnership } from '@/lib/db/queries'
-import { assertChatOwner } from '@/lib/api-auth'
+import { assertChatAccess, assertChatOwner } from '@/lib/api-auth'
+import { createPreviewCapability } from '@/lib/chat-capability'
+import { getPreviewProxyUrl } from '@/lib/preview-url'
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ chatId: string }> },
 ) {
   try {
-    const session = await auth()
     const { chatId } = await params
 
     if (!chatId) {
@@ -19,19 +18,8 @@ export async function GET(
       )
     }
 
-    if (session?.user?.id) {
-      // Authenticated user - check ownership
-      const ownership = await getChatOwnership({ v0ChatId: chatId })
-
-      if (!ownership) {
-        return NextResponse.json({ error: 'Chat not found' }, { status: 404 })
-      }
-
-      if (ownership.user_id !== session.user.id) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      }
-    }
-    // Anonymous users can access any chat via direct URL.
+    const denied = await assertChatAccess(request, chatId)
+    if (denied) return denied
 
     // v2: Get Chat + its messages. Versions/`demo` no longer exist in v2 —
     // messages carry structured `parts`, and the preview URL is fetched
@@ -42,12 +30,14 @@ export async function GET(
     ])
 
     // Preview is best-effort: never fail the chat load if it isn't ready yet.
-    // `demo` points at our same-origin preview proxy (not the raw v0 URL, which
+    // `demo` points at our authenticated preview proxy (not the raw v0 URL, which
     // requires an auth-token header the iframe can't send). Null until ready.
     let demo: string | null = null
     try {
       const preview = unwrap(await v0.chats.getPreview({ chatId }))
-      demo = preview?.url ? `/api/preview/${chatId}` : null
+      demo = preview?.url
+        ? getPreviewProxyUrl(chatId, createPreviewCapability(chatId))
+        : null
     } catch (error) {
       console.warn('Preview not ready for chat', chatId, error)
     }

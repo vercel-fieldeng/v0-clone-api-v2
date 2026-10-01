@@ -1,3 +1,5 @@
+import 'server-only'
+
 import {
   createV0Client,
   type Chat,
@@ -33,6 +35,7 @@ export type V0SseEvent =
       chat: Chat | null
       message: Message | null
       title: string | null
+      capability?: string
     }
   | { type: 'error'; error: string }
 
@@ -62,10 +65,16 @@ export function unwrap<T>(result: { data?: T; error?: unknown }): T {
  *
  * Rather than forwarding the raw v0 SSE (which would require importing the
  * server-only `v0` package on the client to decode via `readV0Stream`), we
- * consume the stream on the server and re-emit **full `parts` snapshots** as
- * simple `data: <json>` events. The client only needs a tiny SSE reader.
+ * consume the stream on the server and re-emit full structured `parts`
+ * snapshots as simple `data: <json>` events. The client only needs a tiny SSE
+ * reader.
  */
-export function v0StreamToSSE(result: V0StreamResult): Response {
+export function v0StreamToSSE(
+  result: V0StreamResult,
+  options: {
+    onChat?: (chat: Chat) => string | void | Promise<string | void>
+  } = {},
+): Response {
   const encoder = new TextEncoder()
 
   const stream = new ReadableStream<Uint8Array>({
@@ -74,16 +83,25 @@ export function v0StreamToSSE(result: V0StreamResult): Response {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
 
       let last: V0StreamUpdate | undefined
+      let recordedChatId: string | undefined
+      let capability: string | undefined
 
       try {
         for await (const update of result.stream) {
           last = update
+
+          if (update.chat && update.chat.id !== recordedChatId) {
+            capability = (await options.onChat?.(update.chat)) ?? undefined
+            recordedChatId = update.chat.id
+          }
+
           send({
             type: 'update',
             parts: update.parts,
             chat: update.chat ?? null,
             message: update.message ?? null,
             title: update.title ?? null,
+            capability,
           })
         }
 
@@ -93,6 +111,7 @@ export function v0StreamToSSE(result: V0StreamResult): Response {
           chat: last?.chat ?? null,
           message: last?.message ?? null,
           title: last?.title ?? null,
+          capability,
         })
       } catch (error) {
         send({

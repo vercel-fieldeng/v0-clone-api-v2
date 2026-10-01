@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { v0 } from '@/lib/v0'
-import { auth } from '@/app/(auth)/auth'
-import { getChatOwnership } from '@/lib/db/queries'
+import { assertChatAccess } from '@/lib/api-auth'
+import { createPreviewCapability } from '@/lib/chat-capability'
+import { getPreviewProxyUrl } from '@/lib/preview-url'
 
 /**
  * Returns the live preview URL for a chat.
@@ -15,7 +16,6 @@ export async function GET(
   { params }: { params: Promise<{ chatId: string }> },
 ) {
   try {
-    const session = await auth()
     const { chatId } = await params
 
     if (!chatId) {
@@ -25,27 +25,20 @@ export async function GET(
       )
     }
 
-    // Authenticated users may only read previews for chats they own. Anonymous
-    // users can access any chat by URL (matching GET /api/chats/[chatId]).
-    if (session?.user?.id) {
-      const ownership = await getChatOwnership({ v0ChatId: chatId })
-      if (!ownership || ownership.user_id !== session.user.id) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      }
-    }
+    const denied = await assertChatAccess(request, chatId)
+    if (denied) return denied
 
-    // getPreview returns `data: null` while the preview VM boots, and can
-    // return an *error* (e.g. "Chat has no previewable files") when the chat
-    // hasn't produced a runnable app yet. Both mean "no preview available" —
-    // report that as `url: null` (200) rather than 500, so clients can poll
-    // without spamming errors.
-    const { data, error } = await v0.chats.getPreview({ chatId })
+    const { data, error, response } = await v0.chats.getPreview({ chatId })
 
     if (error) {
-      return NextResponse.json({ url: null, pending: true })
+      return NextResponse.json(error, { status: response.status })
     }
 
-    return NextResponse.json({ url: data?.url ?? null })
+    return NextResponse.json({
+      url: data?.url
+        ? getPreviewProxyUrl(chatId, createPreviewCapability(chatId))
+        : null,
+    })
   } catch (error) {
     console.error('Error fetching preview URL:', error)
     return NextResponse.json(

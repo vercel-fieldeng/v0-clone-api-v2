@@ -2,20 +2,20 @@
  * A single decoded snapshot from the v0 SSE stream. `parts` is always the full
  * current state of the message (v2 streams emit complete snapshots, not deltas).
  *
- * NOTE: the streaming API emits parts in the v0 *binary format*
- * (`[[0,[...]],[1,{...}]]`), which is a different shape than the clean
- * `{ type, ... }[]` returned by `messages.list`. Typed loosely here; the
- * renderer (`@v0-sdk/react` `Message`) understands the binary shape.
+ * The streaming API emits the same structured parts used by persisted v2
+ * messages. The browser renders each full snapshot as it arrives.
  */
+import type { Message } from '@v0-sdk/react'
+
 export interface V0StreamSnapshot {
-  parts: unknown[]
+  parts: Message['parts']
   chat: { id: string } | null
   title: string | null
 }
 
 interface V0StreamHandlers {
   onUpdate?: (snapshot: V0StreamSnapshot) => void
-  onChat?: (chat: { id: string }) => void
+  onChat?: (chat: { id: string }, capability?: string) => void | Promise<void>
   onDone?: (snapshot: V0StreamSnapshot) => void
   onError?: (message: string) => void
 }
@@ -59,20 +59,22 @@ export async function readV0Sse(
 
         let event: {
           type: 'update' | 'done' | 'error'
-          parts?: unknown[]
+          parts?: Message['parts']
           chat?: { id: string } | null
           title?: string | null
+          capability?: string
           error?: string
         }
         try {
           event = JSON.parse(json)
         } catch {
-          continue
+          handlers.onError?.('Received an invalid streaming response')
+          return
         }
 
         if (event.type === 'error') {
           handlers.onError?.(event.error || 'Streaming failed')
-          continue
+          return
         }
 
         const snapshot: V0StreamSnapshot = {
@@ -83,16 +85,23 @@ export async function readV0Sse(
 
         if (snapshot.chat?.id && snapshot.chat.id !== notifiedChatId) {
           notifiedChatId = snapshot.chat.id
-          handlers.onChat?.(snapshot.chat)
+          await handlers.onChat?.(snapshot.chat, event.capability)
         }
 
         if (event.type === 'update') {
           handlers.onUpdate?.(snapshot)
         } else if (event.type === 'done') {
           handlers.onDone?.(snapshot)
+          return
         }
       }
     }
+
+    handlers.onError?.('The stream ended before completion')
+  } catch (error) {
+    handlers.onError?.(
+      error instanceof Error ? error.message : 'Streaming failed',
+    )
   } finally {
     reader.releaseLock()
   }

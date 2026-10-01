@@ -9,7 +9,7 @@ import {
 import { Loader } from '@/components/ai-elements/loader'
 import { MessageRenderer } from '@/components/message-renderer'
 import { V0StreamingMessage } from '@/components/v0/streaming-message'
-import type { MessageBinaryFormat } from '@v0-sdk/react'
+import type { Message as V0Message } from '@v0-sdk/react'
 import type { MessageContent } from '@/lib/chat-types'
 
 interface ChatMessage {
@@ -29,8 +29,8 @@ interface ChatMessagesProps {
   chatHistory: ChatMessage[]
   isLoading: boolean
   currentChat: Chat | null
-  onStreamingComplete: (finalParts: MessageBinaryFormat) => void
-  onChatData: (chatData: { id: string }) => void
+  onStreamingComplete: (finalParts: V0Message['parts']) => void
+  onChatData: (chatData: { id: string }, capability?: string) => void | Promise<void>
   onStreamingStarted?: () => void
 }
 

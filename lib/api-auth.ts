@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/app/(auth)/auth'
 import { getChatOwnership } from '@/lib/db/queries'
+import {
+  getChatCapabilityCookieName,
+  verifyChatCapability,
+} from '@/lib/chat-capability'
 
 /** Best-effort client IP from proxy headers, for anonymous rate limiting. */
 export function getClientIP(request: NextRequest): string {
@@ -37,4 +41,27 @@ export async function assertChatOwner(
   }
 
   return null
+}
+
+/** Allows a signed-in owner or a browser with a signed anonymous capability. */
+export async function assertChatAccess(
+  request: NextRequest,
+  chatId: string,
+): Promise<NextResponse | null> {
+  const session = await auth()
+  const capability = request.cookies.get(
+    getChatCapabilityCookieName(chatId),
+  )?.value
+
+  if (capability && verifyChatCapability(chatId, capability)) return null
+
+  if (session?.user?.id) {
+    const ownership = await getChatOwnership({ v0ChatId: chatId })
+    if (ownership?.user_id === session.user.id) return null
+  }
+
+  return NextResponse.json(
+    { error: 'Chat not found or access denied' },
+    { status: 404 },
+  )
 }

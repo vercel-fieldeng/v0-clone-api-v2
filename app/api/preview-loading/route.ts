@@ -4,7 +4,8 @@ import { NextRequest } from 'next/server'
 // proxy route after a short delay until the preview becomes available.
 export async function GET(request: NextRequest) {
   const chatId = new URL(request.url).searchParams.get('chatId') || ''
-  const target = `/api/preview/${encodeURIComponent(chatId)}`
+  const capability = new URL(request.url).searchParams.get('capability') || ''
+  const target = `/api/preview/${encodeURIComponent(chatId)}?capability=${encodeURIComponent(capability)}`
 
   const html = `<!doctype html>
 <html>

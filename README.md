@@ -1,6 +1,6 @@
 # v0 clone
 
-> **⚠️ Developer Preview**: This example targets the **v0 Platform API v2** via the [`v0`](https://www.npmjs.com/package/v0) SDK (currently published on the `canary` tag). The v2 API and SDK are in beta and subject to change. Use in production at your own risk.
+> **Developer preview:** This example uses the stable [v0 Platform API v2](https://v0.app/docs/api/v2) with the [`v0`](https://www.npmjs.com/package/v0) and [`@v0-sdk/react`](https://www.npmjs.com/package/@v0-sdk/react) 3.x packages.
 
 <p align="center">
     <img src="./screenshot.png" alt="v0 Clone Screenshot" width="800" />
@@ -21,6 +21,12 @@
 
 ## Setup
 
+Use Node.js 22 or newer and pnpm 10. Install the dependencies before configuring the app:
+
+```bash
+pnpm install
+```
+
 ### Environment Variables
 
 Create a `.env` file with all required variables:
@@ -40,6 +46,9 @@ V0_API_KEY=your_v0_api_key_here
 
 # Optional: Override the v0 API base URL (advanced; defaults to the v2 endpoint)
 # V0_API_URL=
+
+# Production: preview-only deployment on a different registrable domain
+# V0_PREVIEW_ORIGIN=https://preview.example-preview.com
 ```
 
 ### Database Setup
@@ -53,7 +62,7 @@ This project uses PostgreSQL with Drizzle ORM. The committed migration in
    pnpm db:migrate
    ```
 
-   > On Vercel this runs automatically: the `build` script runs migrations before `next build`.
+   Run migrations as a controlled deployment step before starting the new application version. The build command does not mutate the database.
 
 2. **Optional - Open Database Studio**:
 
@@ -132,7 +141,7 @@ This v0 clone includes:
 - `app/page.tsx` - Main UI with chat interface, streaming toggle, and preview panel
 - `components/ai-elements/` - AI Elements components for the UI
 - `components/shared/app-header.tsx` - Navigation header with user authentication
-- `components/v0/` - v2 stream reader + message rendering (`@v0-sdk/react` renders the streamed content)
+- `components/v0/` - v2 stream reader and structured message-part rendering
 
 ### Backend & API
 
@@ -161,8 +170,8 @@ When streaming is enabled:
 
 - The frontend sends `streaming: true` to `app/api/chat/route.ts`
 - The route calls `v0.chats.createStream(...)` (new chat) or `v0.messages.sendStream(...)` (existing chat)
-- The server consumes the v2 stream and re-emits full message snapshots as Server-Sent Events (`Content-Type: text/event-stream`) — see `lib/v0.ts` (`v0StreamToSSE`). This keeps the server-only SDK out of the browser bundle.
-- The client reads that SSE with `lib/v0-stream.ts` and renders each snapshot via `@v0-sdk/react`'s `Message` component (`components/v0/streaming-message.tsx`)
+- The server consumes the v2 stream and re-emits full structured message snapshots as Server-Sent Events (`Content-Type: text/event-stream`). See `lib/v0.ts` (`v0StreamToSSE`). This keeps the server-only SDK out of the browser bundle.
+- The client reads that SSE with `lib/v0-stream.ts` and renders each snapshot through `components/v0/message-parts.tsx`.
 
 ## Database Commands
 
@@ -177,7 +186,11 @@ When streaming is enabled:
 - Secure session cookies
 - CSRF protection
 - SQL injection protection via Drizzle ORM
-- User data isolation through ownership mapping
+- User data isolation through server-written ownership records
+- Anonymous chat access protected by a seven-day signed, HTTP-only capability cookie
+- Chat authorization on message, history, and preview routes
+
+The bundled preview fallback stays on the application origin and deliberately omits the iframe's `allow-same-origin` permission. Some generated apps need that permission for cookies, storage, or origin-sensitive runtime behavior. In production, deploy the same preview routes on a preview-only origin on a different site, set `V0_PREVIEW_ORIGIN` to that deployment, give both deployments the same `AUTH_SECRET`, and add the hostname to v0's trusted preview hosts. See the [v0 preview guide](https://v0.app/docs/api/v2/guides/accessing-previews) for the isolation requirements.
 
 ## User Types & Rate Limits
 
@@ -189,4 +202,4 @@ Rate limits are enforced per 24-hour period and reset daily.
 
 ---
 
-You now have a working multi-tenant v0 clone with authentication! Feel free to explore the [v0 Platform API v2](https://v0.app/docs/api/v2) and extend your app with additional features.
+See the [v0 Platform API v2 documentation](https://v0.app/docs/api/v2) for chat resume, agent interactions, deployment, and other API features.

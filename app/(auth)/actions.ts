@@ -8,12 +8,12 @@ import { revalidatePath } from 'next/cache'
 import { AuthError } from 'next-auth'
 
 const signInSchema = z.object({
-  email: z.string().email('Please enter a valid email.'),
+  email: z.email('Please enter a valid email.'),
   password: z.string().min(1, 'Password is required.'),
 })
 
 const signUpSchema = z.object({
-  email: z.string().email('Please enter a valid email.'),
+  email: z.email('Please enter a valid email.'),
   password: z.string().min(6, 'Password must be at least 6 characters.'),
 })
 

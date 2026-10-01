@@ -1,19 +1,15 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Message, MessageBinaryFormat } from '@v0-sdk/react'
+import type { Message } from '@v0-sdk/react'
 import { Loader } from '@/components/ai-elements/loader'
 import { readV0Sse } from '@/lib/v0-stream'
-import {
-  isBinaryFormat,
-  preprocessBinary,
-} from '@/components/message-renderer'
-import { sharedComponents } from '@/components/shared-components'
+import { MessageParts } from '@/components/v0/message-parts'
 
 interface V0StreamingMessageProps {
   stream: ReadableStream<Uint8Array>
-  onComplete?: (finalParts: MessageBinaryFormat) => void
-  onChatData?: (chat: { id: string }) => void
+  onComplete?: (finalParts: Message['parts']) => void
+  onChatData?: (chat: { id: string }, capability?: string) => void | Promise<void>
   onChunk?: () => void
   className?: string
 }
@@ -21,9 +17,8 @@ interface V0StreamingMessageProps {
 /**
  * Consumes the SSE stream from `/api/chat` and renders the live v2 message.
  *
- * The v2 streaming API emits the v0 **binary format** (`[[0,[...]],[1,{...}]]`)
- * as full snapshots, which `@v0-sdk/react`'s `Message` renders. A loader is
- * shown until the first content arrives so there's always visible progress.
+ * The v2 streaming API emits structured message parts as full snapshots. A
+ * loader is shown until the first content arrives.
  */
 export function V0StreamingMessage({
   stream,
@@ -32,7 +27,7 @@ export function V0StreamingMessage({
   onChunk,
   className,
 }: V0StreamingMessageProps) {
-  const [parts, setParts] = useState<MessageBinaryFormat>([])
+  const [parts, setParts] = useState<Message['parts']>([])
 
   const handlers = useRef({ onComplete, onChatData, onChunk })
   handlers.current = { onComplete, onChatData, onChunk }
@@ -48,18 +43,20 @@ export function V0StreamingMessage({
     if (!startedRef.current) {
       startedRef.current = true
 
-      readV0Sse(stream, {
+      void readV0Sse(stream, {
         onUpdate: (snapshot) => {
           if (!mountedRef.current) return
           handlers.current.onChunk?.()
-          setParts(snapshot.parts as MessageBinaryFormat)
+          setParts(snapshot.parts)
         },
-        onChat: (chat) => {
-          if (mountedRef.current) handlers.current.onChatData?.(chat)
+        onChat: async (chat, capability) => {
+          if (mountedRef.current) {
+            await handlers.current.onChatData?.(chat, capability)
+          }
         },
         onDone: (snapshot) => {
           if (!mountedRef.current) return
-          const final = snapshot.parts as MessageBinaryFormat
+          const final = snapshot.parts
           setParts(final)
           handlers.current.onComplete?.(final)
         },
@@ -72,6 +69,8 @@ export function V0StreamingMessage({
             return latest
           })
         },
+      }).catch((error) => {
+        console.error('Streaming error:', error)
       })
     }
 
@@ -81,7 +80,7 @@ export function V0StreamingMessage({
   }, [stream])
 
   // Nothing rendered yet — show a spinner so there's always visible progress.
-  if (!isBinaryFormat(parts)) {
+  if (parts.length === 0) {
     return (
       <div
         role="status"
@@ -95,11 +94,6 @@ export function V0StreamingMessage({
   }
 
   return (
-    <Message
-      content={preprocessBinary(parts)}
-      role="assistant"
-      className={className}
-      components={sharedComponents}
-    />
+    <MessageParts parts={parts} isStreaming className={className} />
   )
 }

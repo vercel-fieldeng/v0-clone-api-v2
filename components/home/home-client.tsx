@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { mutate } from 'swr'
-import type { MessageBinaryFormat } from '@v0-sdk/react'
+import type { Message as V0Message } from '@v0-sdk/react'
 import type { MessageContent } from '@/lib/chat-types'
 import { pollPreviewUrl } from '@/lib/client-utils'
 import {
@@ -249,7 +249,10 @@ export function HomeClient() {
     }
   }
 
-  const handleChatData = async (chatData: { id: string }) => {
+  const handleChatData = async (
+    chatData: { id: string },
+    capability?: string,
+  ) => {
     if (!chatData.id || currentChatId) return
 
     setCurrentChatId(chatData.id)
@@ -258,22 +261,19 @@ export function HomeClient() {
     // Update URL without triggering Next.js routing
     window.history.pushState(null, '', `/chats/${chatData.id}`)
 
-    // Create ownership record for the new chat.
-    try {
-      await fetch('/api/chat/ownership', {
+    if (capability) {
+      const response = await fetch('/api/chat/capability', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatId: chatData.id }),
+        body: JSON.stringify({ chatId: chatData.id, capability }),
       })
-      // Refresh the sidebar chat list now that this chat is owned by the user.
-      mutate('/api/chats')
-    } catch (error) {
-      console.error('Failed to create chat ownership:', error)
-      // Don't fail the UI if ownership creation fails
+      if (!response.ok) throw new Error('Failed to authorize anonymous chat')
     }
+
+    mutate('/api/chats')
   }
 
-  const handleStreamingComplete = async (finalParts: MessageBinaryFormat) => {
+  const handleStreamingComplete = async (finalParts: V0Message['parts']) => {
     setIsLoading(false)
 
     // Freeze the final content on the last streaming message.
@@ -295,11 +295,11 @@ export function HomeClient() {
     const chatId = currentChatId
     if (chatId) {
       pollPreviewUrl(chatId)
-        .then((demoUrl) => {
-          if (demoUrl) {
-            // Point the iframe at the same-origin preview proxy.
+        .then((previewUrl) => {
+          if (previewUrl) {
+            // Point the iframe at the authenticated preview proxy.
             setCurrentChat((prev) =>
-              prev ? { ...prev, demo: `/api/preview/${chatId}` } : null,
+              prev ? { ...prev, demo: previewUrl } : null,
             )
             if (window.innerWidth < 768) {
               setActivePanel('preview')

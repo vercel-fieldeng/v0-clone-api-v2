@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import type { Message } from '@v0-sdk/react'
 import { cn } from '@/lib/utils'
 import { PROSE_CLASS } from '@/lib/prose'
 import { Response } from '@/components/ai-elements/response'
@@ -24,23 +25,7 @@ import {
  * package statically imports server-only modules (`@vercel/oidc`) and must stay
  * out of client bundles. The API layer forwards these parts verbatim as JSON.
  */
-export interface V0MessagePart {
-  type: string
-  text?: string
-  paths?: string[]
-  operation?: 'create' | 'update' | 'delete' | 'rename' | 'patch'
-  path?: string
-  toPath?: string
-  scope?: 'repo' | 'web'
-  query?: string
-  command?: string
-  output?: string
-  name?: string
-  input?: unknown
-  startedAt?: string | Date
-  finishedAt?: string | Date
-  [key: string]: unknown
-}
+export type V0MessagePart = Message['parts'][number]
 
 const baseName = (p: string) => p.split('/').pop() || p
 
@@ -120,11 +105,12 @@ function ActionItem({ part }: { part: V0MessagePart }) {
     case 'agent-action':
       return (
         <TaskItem>
-          {(part.summary as string) || humanize(part.name) || 'Working…'}
+          {part.summary || humanize(part.name) || 'Working…'}
         </TaskItem>
       )
     default: {
-      const summary = (part.summary as string) || (part.text as string)
+      const extra = part as unknown as { summary?: string; text?: string }
+      const summary = extra.summary || extra.text
       return <TaskItem>{summary || humanize(part.type)}</TaskItem>
     }
   }

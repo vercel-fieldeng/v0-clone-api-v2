@@ -125,17 +125,6 @@ export async function getChatIdsByUserId({
   }
 }
 
-export async function deleteChatOwnership({ v0ChatId }: { v0ChatId: string }) {
-  try {
-    return await db
-      .delete(chat_ownerships)
-      .where(eq(chat_ownerships.v0_chat_id, v0ChatId))
-  } catch (error) {
-    console.error('Failed to delete chat ownership from database')
-    throw error
-  }
-}
-
 // Rate limiting functions
 export async function getChatCountByUserId({
   userId,

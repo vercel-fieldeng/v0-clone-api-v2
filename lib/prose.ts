@@ -5,9 +5,6 @@ import { cn } from '@/lib/utils'
  * surface (compact, semantic tokens, modest headings). Applied to Streamdown
  * output (`Response`) via child selectors so markdown headings/lists/code match
  * the surrounding task + reasoning UI instead of ballooning to article sizes.
- *
- * Keep this in sync with the element class map in `components/shared-components.tsx`,
- * which styles the same content when it arrives in the streaming binary format.
  */
 export const PROSE_CLASS = cn(
   'text-sm leading-relaxed text-foreground',
